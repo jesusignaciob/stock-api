@@ -1,0 +1,65 @@
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+output:
+  formats: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters:
+  disable-all: true
+  enable:
+    # Common errors
+    - errcheck       # Ensures that errors are handled
+    - govet          # Detects common issues in the code
+    - staticcheck    # Advanced static analysis
+    - unused         # Detects unused variables, functions, and packages
+    - ineffassign    # Detects ineffective assignments
+    
+    # Style and conventions
+    - gofmt          # Verifies code formatting
+    - goimports      # Orders and groups imports
+    - gci            # Organizes imports into sections
+    - gocritic       # Style and quality rules
+    
+    # Complexity and quality
+    - gocyclo        # Detects functions with high cyclomatic complexity
+    - gosec          # Detects security issues
+    - bodyclose      # Ensures HTTP response bodies are closed
+    
+    # Go-specific
+    - revive         # Style rules and best practices
+    - prealloc       # Suggests preallocating slices
+    
+    # Performance
+    - nestif         # Detects nested `if` structures
+    - noctx          # Detects missing contexts in public functions
+
+linters-settings:
+  gci:
+    sections:
+      - standard      # Standard Go libraries
+      - default       # External dependencies
+      - prefix(stock-api) # Local project imports
+  gocritic:
+    enabled-tags:
+      - performance
+      - style
+      - diagnostic
+    disabled-checks:
+      - hugeParam     # Disabled to avoid false positives
+  goimports:
+    local-prefixes: stock-api
+  govet:
+    shadow: true      # Detects variables that shadow other variables
+  revive:
+    rules:
+      - name: early-return       # Encourages early returns
+      - name: unused-parameter   # Detects unused parameters
+      - name: error-return       # Verifies error handling
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 50 # Reasonable limit of issues per linter
+  max-same-issues: 5        # Limit of identical issues
