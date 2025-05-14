@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 
 	"stock-api/infrastructure/core/domain"
 	"stock-api/infrastructure/core/port"
@@ -30,14 +29,36 @@ func (s *StockService) RegisterStock(ctx context.Context, stock *domain.Stock) e
 }
 
 func (s *StockService) Find(ctx context.Context, pagination domain.PaginationParams, filters domain.Filters) ([]domain.Stock, int, error) {
-	log.Printf("Entro en Find: %v", filters)
+	// Validate page
+	if pagination.Page <= 0 {
+		return nil, 0, fmt.Errorf("invalid page: %d (must be greater than 0)", pagination.Page)
+	}
 
-	// Validar campo de ordenamiento
+	// Validate pageSize
+	if pagination.PageSize <= 0 {
+		return nil, 0, fmt.Errorf("invalid page size: %d (must be greater than 0)", pagination.PageSize)
+	}
+
+	// Values by default for optional Pagination Fields
+	if pagination.SortField == "" {
+		pagination.SortField = "time"
+	}
+
+	if pagination.SortOrder == 0 {
+		pagination.SortOrder = -1
+	}
+
+	// Validate sorting field
 	if pagination.SortField != "" && !s.fieldValidator.IsValidField(pagination.SortField) {
 		return nil, 0, fmt.Errorf("invalid sort field: %s", pagination.SortField)
 	}
 
-	// Validar campos de filtro
+	// Validate sort order
+	if pagination.SortOrder != 1 && pagination.SortOrder != -1 {
+		return nil, 0, fmt.Errorf("invalid sort order: %d (must be 'asc' or 'desc')", pagination.SortOrder)
+	}
+
+	// Validate filter fields
 	for field := range filters {
 		if !s.fieldValidator.IsValidField(field) {
 			return nil, 0, fmt.Errorf("invalid filter field: %s", field)

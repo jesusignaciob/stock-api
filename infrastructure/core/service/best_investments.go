@@ -11,7 +11,7 @@ import (
 
 type BestInvestmentsServiceImpl struct{}
 
-func NewRecommendations() *BestInvestmentsServiceImpl {
+func NewBestInvestmentsService() *BestInvestmentsServiceImpl {
 	return &BestInvestmentsServiceImpl{}
 }
 

@@ -47,7 +47,7 @@ func setupRouter() *gin.Engine {
 
 // Defines the API routes
 func setupRoutes(router *gin.Engine) {
-	srv := service.NewRecommendations()
+	srv := service.NewBestInvestmentsService()
 	httpHandler = handler.NewStockHandler(stockService, srv)
 	api := router.Group("/api/v1")
 	api.GET("/health", func(c *gin.Context) {
