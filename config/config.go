@@ -109,7 +109,7 @@ func LoadConfig() (*Config, error) {
 			Password: getEnv("DB_PASSWORD", "P@ssw0rd"),
 			DBName:   getEnv("DB_NAME", "api_db"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
-			TimeZone: getEnv("DB_TIMEZONE", "UTC"),
+			TimeZone: "UTC",
 		},
 	}
 
