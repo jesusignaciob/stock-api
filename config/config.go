@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -55,9 +56,10 @@ type DBConfig struct {
 // - Server: Configuration for the server.
 // - DB: Configuration for the database.
 type Config struct {
-	ExternalAPI ExternalAPIConfig
-	Server      ServerConfig
-	DB          DBConfig
+	AllowedOrigins []string
+	ExternalAPI    ExternalAPIConfig
+	Server         ServerConfig
+	DB             DBConfig
 }
 
 // LoadConfig loads the application configuration from environment variables or a .env file.
@@ -92,6 +94,7 @@ func LoadConfig() (*Config, error) {
 
 	// Initialize the configuration struct.
 	cfg := &Config{
+		AllowedOrigins: splitAndTrim(getEnv("ALLOWED_ORIGINS", "127.0.0.1")),
 		ExternalAPI: ExternalAPIConfig{
 			URL:       getEnv("EXTERNAL_API_URL", "https://api.example.com"),
 			JWTToken:  getEnv("EXTERNAL_API_JWT_TOKEN", "your_jwt_token"),
@@ -130,4 +133,11 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// splitAndTrim splits a comma-separated string and trims spaces from each element.
+func splitAndTrim(s string) []string {
+	return strings.FieldsFunc(s, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n'
+	})
 }
