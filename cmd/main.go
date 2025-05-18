@@ -36,7 +36,9 @@ var (
 	httpHandler  *handler.StockHandler
 )
 
-// Sets up the Gin router with middleware
+// setupRouter configures the Gin router with all required middleware.
+// It sets up CORS, logging, and recovery middleware.
+// Returns a configured *gin.Engine instance.
 func setupRouter(cfg *config.Config) *gin.Engine {
 	r := gin.Default()
 
@@ -47,7 +49,7 @@ func setupRouter(cfg *config.Config) *gin.Engine {
 		}
 	}()
 
-	// Use middlewares
+	// Register middlewares
 	r.Use(middleware.AsyncCORSMiddleware(cfg.AllowedOrigins))
 	r.Use(middleware.AsyncLogger(zapLogger))
 	r.Use(gin.Recovery())
@@ -55,11 +57,12 @@ func setupRouter(cfg *config.Config) *gin.Engine {
 	return r
 }
 
-// Defines the API routes
+// setupRoutes defines all API endpoints and attaches them to the router.
+// It initializes the handler with the worker pool and services.
 func setupRoutes(router *gin.Engine) {
 	srv := service.NewBestInvestmentsService()
 
-	// Worker pool size = (cores * 2) + número de unidades de almacenamiento
+	// Worker pool size = (cores * 2) + 1 (for storage units)
 	workerPoolSize := (runtime.NumCPU() * 2) + 1
 
 	httpHandler = handler.NewStockHandler(stockService, srv, workerPoolSize)
@@ -71,7 +74,9 @@ func setupRoutes(router *gin.Engine) {
 	api.GET("/recommendations", httpHandler.GetStockRecommendations)
 }
 
-// Runs database migrations in the specified direction ('up' or 'down')
+// RunMigrations executes database migrations in the specified direction ("up" or "down").
+// It initializes the migration driver and runs the migrations from the "migrations" directory.
+// Returns an error if migration fails.
 func RunMigrations(cfg *config.Config, db *sql.DB, direction string) error {
 	// Validate the direction argument
 	if direction != "up" && direction != "down" {
@@ -110,7 +115,9 @@ func RunMigrations(cfg *config.Config, db *sql.DB, direction string) error {
 	return nil
 }
 
-// Sets up the batch processor and runs it in a goroutine
+// setupBatchProcessor initializes and runs the batch processor in a goroutine.
+// It processes stocks using the external API client and classification service.
+// The done channel is closed when processing is finished.
 func setupBatchProcessor(cfg *config.Config, done chan struct{}) {
 	apiClient := service.NewExternalAPIClient(cfg.ExternalAPI.URL)
 	classificationService := service.NewClassificationService()
@@ -132,6 +139,10 @@ func setupBatchProcessor(cfg *config.Config, done chan struct{}) {
 	}()
 }
 
+// main is the entry point of the application.
+// It loads configuration, initializes the database, repository, and services,
+// and starts the API server or batch processor based on the selected mode.
+// It also handles graceful shutdown on interrupt signals.
 func main() {
 	flag.Parse()
 	// Load configuration
