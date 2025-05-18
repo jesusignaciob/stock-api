@@ -67,7 +67,7 @@ func (h *StockHandler) FindStocks(c *gin.Context) {
 
 	// Calls the service to find stocks based on the pagination and filters.
 	stocks, total, err := AsyncManyOperation(c, h.workerPool, func() ([]domain.Stock, int, error) {
-		return h.stockService.Find(c, pagination, filters)
+		return h.stockService.Find(c.Request.Context(), pagination, filters)
 	})
 
 	if err != nil {
@@ -103,7 +103,10 @@ func (h *StockHandler) GetStockRecommendations(c *gin.Context) {
 
 	filters := make(domain.Filters)
 
-	stocks, _, err := h.stockService.Find(c, pagination, filters)
+	// Calls the service to find stocks based on the pagination and filters.
+	stocks, _, err := AsyncManyOperation(c, h.workerPool, func() ([]domain.Stock, int, error) {
+		return h.stockService.Find(c.Request.Context(), pagination, filters)
+	})
 
 	if err != nil {
 		response.InternalServerError(c, "Failed to retrieve stocks")
@@ -113,45 +116,4 @@ func (h *StockHandler) GetStockRecommendations(c *gin.Context) {
 	recommendations := h.serviceBestInvestments.GetStockRecommendations(stocks, limit)
 
 	response.Success(c, 200, recommendations)
-}
-
-// FindAllStocks handles the HTTP request to retrieve a paginated list of stocks.
-// It accepts query parameters for sorting order, page number, and limit per page.
-//
-// Query Parameters:
-// - order: (optional) The sorting order of the stocks (e.g., "asc" or "desc").
-// - page: (required) The page number for pagination. Must be a valid integer.
-// - limit: (required) The number of items per page. Must be a valid integer.
-//
-// Responses:
-// - 200: Returns a JSON response with the list of stocks.
-// - 400: Returns a bad request error if the page or limit parameters are invalid.
-// - 500: Returns an internal server error if there is an issue retrieving the stocks.
-//
-// Example:
-// GET /stocks?order=asc&page=1&limit=10
-func (h *StockHandler) FindAllStocks(c *gin.Context) {
-	order := c.Query("order")
-	pageStr := c.Query("page")
-	limitStr := c.Query("limit")
-
-	page, err := strconv.Atoi(pageStr)
-	if err != nil {
-		response.BadRequest(c, "Invalid page parameter")
-		return
-	}
-
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil {
-		response.BadRequest(c, "Invalid limit parameter")
-		return
-	}
-
-	stocks, err := h.stockService.FindAllStocks(c, order, page, limit)
-	if err != nil {
-		response.InternalServerError(c, "Failed to retrieve stocks")
-		return
-	}
-
-	response.Success(c, 200, stocks)
 }
