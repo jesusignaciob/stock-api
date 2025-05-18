@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	migrate_driver "github.com/golang-migrate/migrate/v4/database/cockroachdb" // migrate_driver "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"                       // Import the file source driver
+	"go.uber.org/zap"
 
 	"stock-api/config"
 	"stock-api/infrastructure"
@@ -35,12 +37,20 @@ var (
 )
 
 // Sets up the Gin router with middleware
-func setupRouter() *gin.Engine {
+func setupRouter(cfg *config.Config) *gin.Engine {
 	r := gin.Default()
 
+	zapLogger, _ := zap.NewProduction()
+	defer func() {
+		if err := zapLogger.Sync(); err != nil {
+			log.Printf("Error syncing zap logger: %v", err)
+		}
+	}()
+
 	// Use middlewares
-	r.Use(middleware.CORS())
-	r.Use(middleware.Logger())
+	r.Use(middleware.AsyncCORSMiddleware(cfg.AllowedOrigins))
+	r.Use(middleware.AsyncLogger(zapLogger))
+	r.Use(gin.Recovery())
 
 	return r
 }
@@ -48,7 +58,11 @@ func setupRouter() *gin.Engine {
 // Defines the API routes
 func setupRoutes(router *gin.Engine) {
 	srv := service.NewBestInvestmentsService()
-	httpHandler = handler.NewStockHandler(stockService, srv)
+
+	// Worker pool size = (cores * 2) + número de unidades de almacenamiento
+	workerPoolSize := (runtime.NumCPU() * 2) + 1
+
+	httpHandler = handler.NewStockHandler(stockService, srv, workerPoolSize)
 	api := router.Group("/api/v1")
 	api.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -175,7 +189,7 @@ func main() {
 	switch *mode {
 	case "api":
 		// Setting up the Gin router
-		router := setupRouter()
+		router := setupRouter(cfg)
 
 		// Setting up the routes
 		setupRoutes(router)
