@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -199,7 +200,7 @@ func main() {
 			return
 		}
 		defer func() {
-			if err := zapLogger.Sync(); err != nil {
+			if err := zapLogger.Sync(); err != nil && !strings.Contains(err.Error(), "invalid argument") {
 				log.Printf("Error syncing zap logger: %v", err)
 			}
 		}()
