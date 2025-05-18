@@ -13,10 +13,11 @@ import (
 type StockHandler struct {
 	stockService           port.StockService
 	serviceBestInvestments port.BestInvestmentsService
+	workerPool             chan struct{}
 }
 
-func NewStockHandler(service port.StockService, service_best_investments port.BestInvestmentsService) *StockHandler {
-	return &StockHandler{stockService: service, serviceBestInvestments: service_best_investments}
+func NewStockHandler(service port.StockService, service_best_investments port.BestInvestmentsService, maxWorkers int) *StockHandler {
+	return &StockHandler{stockService: service, serviceBestInvestments: service_best_investments, workerPool: make(chan struct{}, maxWorkers)}
 }
 
 // FindStocks handles the HTTP request to retrieve a list of stocks.
@@ -65,7 +66,10 @@ func (h *StockHandler) FindStocks(c *gin.Context) {
 	}
 
 	// Calls the service to find stocks based on the pagination and filters.
-	stocks, total, err := h.stockService.Find(c, pagination, filters)
+	stocks, total, err := AsyncManyOperation(c, h.workerPool, func() ([]domain.Stock, int, error) {
+		return h.stockService.Find(c, pagination, filters)
+	})
+
 	if err != nil {
 		response.InternalServerError(c, "Failed to retrieve stocks")
 		return
