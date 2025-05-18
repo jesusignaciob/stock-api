@@ -2,12 +2,22 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/lib/pq"
+	"golang.org/x/sync/singleflight"
 	"gorm.io/gorm"
 
 	"stock-api/infrastructure/core/domain"
+)
+
+// In-memory cache for Count results
+var (
+	countCache sync.Map
+	countGroup singleflight.Group
 )
 
 // StockBDRepository is the repository responsible for interacting with the database
@@ -106,20 +116,43 @@ func (r *StockBDRepository) SaveBatch(ctx context.Context, data []*domain.Stock)
 	return r.db.WithContext(ctx).CreateInBatches(data, len(data)).Error
 }
 
+// Count returns the number of stocks in the database that match the provided filters.
+// It uses an in-memory cache with the serialized and hashed filters as the key.
+// Uses singleflight to avoid duplicate DB queries for the same key under concurrency.
 func (r *StockBDRepository) Count(ctx context.Context, filters domain.Filters) (int, error) {
-	var count int64
+	cacheKey := getCacheKey(filters)
 
-	query := r.db.WithContext(ctx)
-
-	for field, filter := range filters {
-		query = applyFilter(query, field, filter)
+	// Try to get from cache
+	if v, ok := countCache.Load(cacheKey); ok {
+		if cachedCount, ok := v.(int); ok {
+			return cachedCount, nil
+		}
 	}
 
-	err := query.
-		Model(&domain.Stock{}).
-		Count(&count).Error
+	// Use singleflight to avoid duplicate DB queries for the same key
+	val, err, _ := countGroup.Do(cacheKey, func() (interface{}, error) {
+		var count int64
+		query := r.db.WithContext(ctx)
+		for field, filter := range filters {
+			query = applyFilter(query, field, filter)
+		}
+		err := query.Model(&domain.Stock{}).Count(&count).Error
+		if err == nil {
+			countCache.Store(cacheKey, int(count))
+		}
+		return int(count), err
+	})
+	if err != nil {
+		return 0, err
+	}
+	return val.(int), nil
+}
 
-	return int(count), err
+// getCacheKey serializes and hashes the filters to generate a unique cache key.
+func getCacheKey(filters domain.Filters) string {
+	b, _ := json.Marshal(filters)
+	hash := sha256.Sum256(b)
+	return fmt.Sprintf("%x", hash)
 }
 
 func applyFilter(query *gorm.DB, field string, filter domain.Filter) *gorm.DB {
