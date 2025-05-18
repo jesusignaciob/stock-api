@@ -16,7 +16,7 @@ func NewBestInvestmentsService() *BestInvestmentsServiceImpl {
 }
 
 // GetStockRecommendations generates a list of stock recommendations based on their scores.
-// It filters, sorts, and limits the provided stock data to produce the top recommendations.
+// It sorts, and limits the provided stock data to produce the top recommendations.
 //
 // Parameters:
 //   - stocks: A slice of Stock objects representing the available stock data.
@@ -33,21 +33,20 @@ func NewBestInvestmentsService() *BestInvestmentsServiceImpl {
 //  4. Constructs and returns a slice of Recommendation objects, including the position, ticker, company name,
 //     score, and rationale for each recommended stock.
 func (s *BestInvestmentsServiceImpl) GetStockRecommendations(stocks []domain.Stock, limit int) []domain.Recommendation {
-	// Filter and sort
-	filtered := filterStocks(stocks)
-	sort.Slice(filtered, func(i, j int) bool {
-		return calculateScore(filtered[i]) > calculateScore(filtered[j])
+	// Sort
+	sort.Slice(stocks, func(i, j int) bool {
+		return calculateScore(stocks[i]) > calculateScore(stocks[j])
 	})
 
 	// Limit results
-	if limit > len(filtered) {
-		limit = len(filtered)
+	if limit > len(stocks) {
+		limit = len(stocks)
 	}
 
 	// Prepare response
 	recommendations := make([]domain.Recommendation, limit)
 	for i := 0; i < limit; i++ {
-		stock := filtered[i]
+		stock := stocks[i]
 		recommendations[i] = domain.Recommendation{
 			Position:  i + 1,
 			Ticker:    stock.Ticker,
@@ -58,29 +57,6 @@ func (s *BestInvestmentsServiceImpl) GetStockRecommendations(stocks []domain.Sto
 	}
 
 	return recommendations
-}
-
-func filterStocks(stocks []domain.Stock) []domain.Stock {
-	var filtered []domain.Stock
-	for i := range stocks {
-		if isRecommended(stocks[i]) {
-			filtered = append(filtered, stocks[i])
-		}
-	}
-	return filtered
-}
-
-// isRecommended determines if a stock is recommended based on its classifications.
-// It excludes stocks with problematic classifications.
-func isRecommended(stock domain.Stock) bool {
-	// Exclude problematic stocks
-	for _, classification := range stock.Classifications {
-		switch classification {
-		case "High-Risk Speculative", "Bearish Signal", "Analyst Negative":
-			return false
-		}
-	}
-	return true
 }
 
 // calculateScore calculates the score of a stock based on various factors.

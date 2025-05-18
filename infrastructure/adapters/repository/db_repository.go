@@ -64,8 +64,12 @@ func (r *StockBDRepository) Find(ctx context.Context, pagination domain.Paginati
 	var stocks []domain.Stock
 	query := r.db.WithContext(ctx)
 
+	var err error
 	for field, filter := range filters {
-		query = applyFilter(query, field, filter)
+		query, err = applyFilter(query, field, filter)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	query = applyOrder(query, pagination)
@@ -132,11 +136,15 @@ func (r *StockBDRepository) Count(ctx context.Context, filters domain.Filters) (
 	// Use singleflight to avoid duplicate DB queries for the same key
 	val, err, _ := countGroup.Do(cacheKey, func() (interface{}, error) {
 		var count int64
+		var err error
 		query := r.db.WithContext(ctx)
 		for field, filter := range filters {
-			query = applyFilter(query, field, filter)
+			query, err = applyFilter(query, field, filter)
+			if err != nil {
+				return 0, err
+			}
 		}
-		err := query.Model(&domain.Stock{}).Count(&count).Error
+		err = query.Model(&domain.Stock{}).Count(&count).Error
 		if err == nil {
 			countCache.Store(cacheKey, int(count))
 		}
@@ -155,25 +163,91 @@ func getCacheKey(filters domain.Filters) string {
 	return fmt.Sprintf("%x", hash)
 }
 
-func applyFilter(query *gorm.DB, field string, filter domain.Filter) *gorm.DB {
+// applyFilter applies a filter to the GORM query based on the field and filter criteria.
+// Supports array fields (like classifications) and various match modes for both array and scalar fields.
+// Returns the updated query and an error if the filter is invalid.
+func applyFilter(query *gorm.DB, field string, filter domain.Filter) (*gorm.DB, error) {
+	if field == "classifications" {
+		var arr []string
+		switch v := filter.Value.(type) {
+		case string:
+			arr = []string{v}
+		case []string:
+			arr = v
+		case []interface{}:
+			arr = make([]string, len(v))
+			for i, val := range v {
+				s, ok := val.(string)
+				if !ok {
+					return query, fmt.Errorf("invalid value type in array for field %s: expected string", field)
+				}
+				arr[i] = s
+			}
+		default:
+			return query, fmt.Errorf("invalid value type for field %s: expected string or []string", field)
+		}
+		// Handle the classification filter
+		switch filter.MatchMode {
+		case "equals":
+			// Checks if the array is exactly equal (same elements in the same order)
+			query = query.Where("classifications = ?", pq.Array(arr))
+		case "contains":
+			// Checks if the array contains at least the specified value
+			query = query.Where("classifications @> ?", pq.Array(arr))
+		case "contained":
+			// Checks if the array is contained in the specified value
+			query = query.Where("classifications <@ ?", pq.Array(arr))
+		case "overlap":
+			// Checks if there is any common element
+			query = query.Where("classifications && ?", pq.Array(arr))
+		case "notEquals":
+			// Checks if the array is not exactly equal
+			query = query.Where("classifications != ?", pq.Array(arr))
+		case "notContains":
+			// Checks if the array does not contain the specified value
+			query = query.Where("NOT classifications @> ?", pq.Array(arr))
+		case "notContained":
+			// Checks if the array is not contained in the specified value
+			query = query.Where("NOT classifications <@ ?", pq.Array(arr))
+		case "notOverlap":
+			// Checks if there is no common element
+			query = query.Where("NOT classifications && ?", pq.Array(arr))
+		default:
+			// Default mode or error handling
+			return nil, fmt.Errorf("unsupported match mode for array field: %s", filter.MatchMode)
+		}
+
+		return query, nil
+	}
 	switch filter.MatchMode {
 	case "equals":
+		// Checks if the field is equal to the specified value
 		query = query.Where(fmt.Sprintf("%s = ?", field), filter.Value)
 	case "contains":
+		// Checks if the field contains the specified value
 		query = query.Where(fmt.Sprintf("%s LIKE ?", field), fmt.Sprintf("%%%v%%", filter.Value))
 	case "startsWith":
+		// Checks if the field starts with the specified value
 		query = query.Where(fmt.Sprintf("%s LIKE ?", field), fmt.Sprintf("%v%%", filter.Value))
 	case "endsWith":
+		// Checks if the field ends with the specified value
 		query = query.Where(fmt.Sprintf("%s LIKE ?", field), fmt.Sprintf("%%%v", filter.Value))
 	case "greaterThan":
+		// Checks if the field is greater than the specified value
 		query = query.Where(fmt.Sprintf("%s > ?", field), filter.Value)
 	case "lessThan":
+		// Checks if the field is less than the specified value
 		query = query.Where(fmt.Sprintf("%s < ?", field), filter.Value)
+	default:
+		// Default mode or error handling
+		return nil, fmt.Errorf("unsupported match mode for array field: %s", filter.MatchMode)
 	}
 
-	return query
+	return query, nil
 }
 
+// applyOrder applies sorting to the GORM query based on the pagination parameters.
+// Returns the updated query.
 func applyOrder(query *gorm.DB, pagination domain.PaginationParams) *gorm.DB {
 	if pagination.SortField != "" {
 		order := "ASC"
@@ -186,6 +260,8 @@ func applyOrder(query *gorm.DB, pagination domain.PaginationParams) *gorm.DB {
 	return query
 }
 
+// applyPagination applies pagination to the GORM query based on the pagination parameters.
+// Returns the updated query.
 func applyPagination(query *gorm.DB, pagination domain.PaginationParams) *gorm.DB {
 	if pagination.Page > 0 && pagination.PageSize > 0 {
 		query = query.Offset((pagination.Page - 1) * pagination.PageSize).Limit(pagination.PageSize)

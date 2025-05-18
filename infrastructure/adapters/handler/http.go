@@ -101,7 +101,16 @@ func (h *StockHandler) GetStockRecommendations(c *gin.Context) {
 		PageSize: 5000,
 	}
 
-	filters := make(domain.Filters)
+	filters := domain.Filters{
+		"classifications": domain.Filter{
+			Value: []string{
+				"High-Risk Speculative",
+				"Bearish Signal",
+				"Analyst Negative",
+			},
+			MatchMode: "notOverlap",
+		},
+	}
 
 	// Calls the service to find stocks based on the pagination and filters.
 	stocks, _, err := AsyncManyOperation(c, h.workerPool, func() ([]domain.Stock, int, error) {
